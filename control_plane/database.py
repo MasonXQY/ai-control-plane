@@ -1,5 +1,6 @@
 import sqlite3
 import time
+from datetime import datetime
 
 DB_PATH = "control_plane_metrics.db"
 
@@ -14,19 +15,29 @@ def init_db():
             latency_ms REAL,
             tokens INTEGER,
             cost REAL,
-            timestamp REAL
+            error INTEGER,
+            timestamp REAL,
+            date TEXT
         )
     """)
     conn.commit()
     conn.close()
 
 
-def record_request(model, latency_ms, tokens, cost):
+def record_request(model, latency_ms, tokens, cost, error=False):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO requests (model, latency_ms, tokens, cost, timestamp) VALUES (?, ?, ?, ?, ?)",
-        (model, latency_ms, tokens, cost, time.time())
+        "INSERT INTO requests (model, latency_ms, tokens, cost, error, timestamp, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            model,
+            latency_ms,
+            tokens,
+            cost,
+            1 if error else 0,
+            time.time(),
+            datetime.utcnow().date().isoformat()
+        )
     )
     conn.commit()
     conn.close()
@@ -35,15 +46,18 @@ def record_request(model, latency_ms, tokens, cost):
 def get_metrics():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
     cursor.execute("""
         SELECT model,
                COUNT(*) as calls,
                AVG(latency_ms) as avg_latency,
                SUM(tokens) as total_tokens,
-               SUM(cost) as total_cost
+               SUM(cost) as total_cost,
+               SUM(error) as total_errors
         FROM requests
         GROUP BY model
     """)
+
     rows = cursor.fetchall()
     conn.close()
 
@@ -52,7 +66,26 @@ def get_metrics():
             "calls": row[1],
             "avg_latency_ms": round(row[2], 2) if row[2] else 0,
             "total_tokens": row[3] or 0,
-            "total_cost": round(row[4], 6) if row[4] else 0
+            "total_cost": round(row[4], 6) if row[4] else 0,
+            "total_errors": row[5] or 0
         }
         for row in rows
     }
+
+
+def get_daily_cost():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    today = datetime.utcnow().date().isoformat()
+
+    cursor.execute("""
+        SELECT SUM(cost)
+        FROM requests
+        WHERE date = ?
+    """, (today,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    return row[0] or 0
