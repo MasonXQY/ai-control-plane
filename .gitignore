@@ -1,0 +1,5 @@
+llm_env_311/
+__pycache__/
+.env
+*.pyc
+.DS_Store
