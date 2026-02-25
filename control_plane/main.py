@@ -1,13 +1,16 @@
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from .router import Router
-from .database import init_db, get_metrics
+from .database import init_db, get_metrics, get_daily_cost
 from .auth import authorize
 from .status import model_status
 from .sla import sla_controller
+from .health_score import HealthScore
+from .circuit_breaker import breaker
 
 app = FastAPI()
 router = Router()
+health_score = HealthScore()
 
 init_db()
 
@@ -48,6 +51,26 @@ def status(x_api_key: str = Header(...)):
 def sla(x_api_key: str = Header(...)):
     authorize(x_api_key, "azure")
     return sla_controller.evaluate()
+
+@app.get("/health-score")
+def health_score_endpoint(x_api_key: str = Header(...)):
+    authorize(x_api_key, "azure")
+    return health_score.evaluate()
+
+@app.get("/cost-trend")
+def cost_trend(x_api_key: str = Header(...)):
+    authorize(x_api_key, "azure")
+    return {
+        "daily_cost": get_daily_cost(),
+        "metrics": get_metrics()
+    }
+
+@app.post("/admin/disable/{model}")
+def disable_model(model: str, x_api_key: str = Header(...)):
+    authorize(x_api_key, "azure")
+    for _ in range(5):
+        breaker.record_failure(model)
+    return {"model": model, "status": "disabled"}
 
 @app.get("/health")
 def health():
