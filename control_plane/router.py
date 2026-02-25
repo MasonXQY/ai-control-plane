@@ -3,8 +3,9 @@ from .agents import KimiAgent, ClaudeAgent, AzureGPTAgent
 from .observability import observability
 from .cost_model import estimate_cost
 from .database import record_request
+from .judge import Judge
 
-BUDGET_LIMIT = 0.05  # simple per-request cost limit
+BUDGET_LIMIT = 0.05
 
 class Router:
 
@@ -13,6 +14,7 @@ class Router:
         self.opus = ClaudeAgent("claude-opus-4-6")
         self.sonnet = ClaudeAgent("claude-sonnet-4-6")
         self.azure = AzureGPTAgent()
+        self.judge = Judge()
 
     def classify(self, prompt):
         code_keywords = [
@@ -42,20 +44,17 @@ class Router:
 
         if model == "kimi":
             result = await self.kimi.run(prompt)
-            tokens = len(result.split())
         elif model == "opus":
             result = await self.opus.run(prompt)
-            tokens = len(result.split())
         elif model == "sonnet":
             result = await self.sonnet.run(prompt)
-            tokens = len(result.split())
         elif model == "azure":
             result = await self.azure.run(prompt)
-            tokens = len(result.split())
         else:
             raise ValueError("Unknown model")
 
         latency = observability.record(model, start)
+        tokens = len(result.split())
         cost = estimate_cost(model, tokens)
 
         if cost > BUDGET_LIMIT:
@@ -86,11 +85,12 @@ class Router:
             except Exception as e:
                 results[name] = f"ERROR: {e}"
 
-        best_model = max(results, key=lambda m: len(results[m]))
+        best_model, confidence = await self.judge.evaluate(prompt, results)
 
         return {
             "selected_model": best_model,
-            "response": results[best_model],
+            "confidence": confidence,
+            "response": results.get(best_model),
             "all_responses": results
         }
 
