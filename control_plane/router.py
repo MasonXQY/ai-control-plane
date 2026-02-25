@@ -2,6 +2,7 @@ import asyncio
 from .agents import KimiAgent, ClaudeAgent, AzureGPTAgent
 from .observability import observability
 from .cost_model import estimate_cost
+from .database import record_request
 
 class Router:
 
@@ -23,7 +24,7 @@ class Router:
         lower_prompt = prompt.lower()
 
         if any(word in lower_prompt for word in code_keywords):
-            return "opus"   # Coding → Opus
+            return "opus"
 
         length = len(prompt.split())
 
@@ -49,6 +50,7 @@ class Router:
             raise ValueError("Unknown model")
 
         latency = observability.record(model, start)
+        record_request(model, latency)
         cost = estimate_cost(model, len(result.split()))
 
         return {

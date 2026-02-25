@@ -1,10 +1,13 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from .router import Router
-from .observability import observability
+from .database import init_db, get_metrics
 
 app = FastAPI()
 router = Router()
+
+# Initialize database on startup
+init_db()
 
 class Request(BaseModel):
     prompt: str
@@ -27,7 +30,7 @@ async def code(req: Request):
 
 @app.get("/metrics")
 def metrics():
-    return observability.metrics()
+    return get_metrics()
 
 @app.get("/health")
 def health():
