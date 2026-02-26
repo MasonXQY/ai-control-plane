@@ -9,6 +9,7 @@ from .cache import get_cached, set_cache, init_cache
 from .adaptive import AdaptiveOptimizer
 from .logging import log_event, hash_prompt
 from .circuit_breaker import breaker
+from .model_registry import is_enabled
 
 BUDGET_LIMIT = 0.05
 CONCURRENCY_LIMIT = 10
@@ -50,6 +51,9 @@ class Router:
             return "balanced"
 
     async def _call_model(self, model, prompt):
+        if not is_enabled(model):
+            raise Exception(f"Model {model} disabled by admin")
+
         if breaker.is_open(model):
             log_event({
                 "event": "circuit_block",
@@ -87,11 +91,6 @@ class Router:
 
             cached = get_cached(model, prompt)
             if cached:
-                log_event({
-                    "event": "cache_hit",
-                    "model": model,
-                    "prompt_hash": prompt_hash
-                })
                 return {
                     "model": model,
                     "latency_ms": 0,
